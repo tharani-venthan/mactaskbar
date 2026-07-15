@@ -1,0 +1,255 @@
+# MacTaskbar — Icon State Visual Fixes (Windows 11 parity)
+
+Context: current build renders active/running icon states incorrectly compared
+to real Windows 11. This doc defines the correct visual spec and the specific
+bugs to fix. Relevant files (from `DEVELOPMENT_LOG.md`): `UI/AppIconView.swift`
+(per-icon visuals) and `UI/TaskbarView.swift` (icon row layout).
+
+## Current bugs (screenshot comparison)
+
+1. **Active app gets a filled rounded-square background.** Right now the
+   "active" icon (see attached screenshot) renders with a solid rounded-rect
+   background fill behind the icon, like a pressed toggle button. Real
+   Windows 11 never fills the icon background for the active state — the
+   icon art stays flat/unmodified. Only a thin bar underneath it changes.
+2. **Multiple open windows render as separate small dots** scattered under
+   the icon. Real Windows 11 renders this as **one underline bar that splits
+   into short segments** sitting directly next to each other, not spaced-out
+   dots.
+3. **No visual distinction between "running in background" and "running
+   with multiple windows."** Currently both just show a single small dot.
+
+## Correct spec: 4 icon states
+
+| State | Background | Indicator below icon |
+|---|---|---|
+| Pinned, not running | none | none |
+| Running, 1 window, not focused | none (hover-only highlight) | single short bar, ~4–6px wide, low-opacity white/gray |
+| Running, 1 window, focused (active) | none | single bar, ~16–20px wide, full-opacity accent color |
+| Running, multiple windows, not focused | none | 2 short bars (~4–6px each) side by side, ~2px gap, low-opacity |
+| Running, multiple windows, one focused | none | 2 bars side by side; the "active" one at full opacity/accent, others dimmed |
+| Hover (any state) | soft rounded-rect highlight fills behind icon, ~4px corner radius, translucent white (~8% opacity) | unchanged |
+
+Notes:
+- The **background fill is a hover-only effect**, never a persistent "active"
+  state indicator. Active state is communicated purely through the
+  underline bar's width/opacity/color.
+- Bar height: ~2–3px, sits ~2px below the icon, centered horizontally under
+  the icon (or under the icon group if segmented).
+- Segmented bars for multi-window apps should be treated as one visual unit
+  centered under the icon — not independently positioned dots.
+
+## Implementation notes for `AppIconView.swift`
+
+- Replace the "active = filled background" logic with an underline-bar view
+  positioned below the icon.
+- Bar count/width should derive from `windowCount` for the app:
+  - `windowCount == 1` → one bar, width toggles narrow/wide based on focus
+  - `windowCount > 1` → cap at 2 visual segments regardless of actual count
+    (Windows 11 doesn't go beyond 2 segments even with 3+ windows)
+- Keep the existing hover rounded-rect highlight, but make sure it's not
+  currently reused as the "active" background (that's likely the source of
+  bug #1 — the hover highlight and active state may be sharing the same
+  view/modifier).
+
+## Open question for the person before implementing
+
+- Confirm accent color to use for the focused-state bar (system accent color
+  via `NSColor.controlAccentColor`, or a fixed color)?
+
+---
+
+# Batch 2 — Pinning, drag smoothness, Task Manager, settings bugs
+
+## 7. Pinned vs. unpinned ordering — clarify before building
+
+Reported: "can't bring an unpinned app in between 2 pinned apps temporarily."
+
+**Note:** this actually matches real Windows 11 behavior — pinned apps always
+stay as one contiguous block in their pinned order; running-but-unpinned apps
+are appended *after* the last pinned app, in the order they were opened. You
+cannot drag a running app to sit between two pinned icons in real Windows 11
+either.
+
+Before implementing, confirm which of these is wanted:
+- **(a) Match Windows 11 exactly** — pinned block stays contiguous, unpinned
+  running apps always append after it. (Likely the current `TaskbarView.swift`
+  logic already tries to do this per the dev log — "pinned slots always
+  precede running apps" — so this may just need verifying/fixing rather than
+  redesigning.)
+- **(b) Deviate from Windows** — allow a running unpinned app to sit anywhere,
+  including between pinned icons, as a deliberate feature choice.
+
+## 8. Drag-to-reorder isn't smooth
+
+The `NSEvent` local monitor approach (see dev log §3) makes dragging work
+functionally, but the reported issue now is animation quality — presumably
+icons are snapping to new positions instead of animating, or tracking the
+cursor with lag. Fix target: icon being dragged should follow the cursor
+1:1 with no lag, and other icons should animate their position shift with a
+short spring/ease animation (~0.15–0.2s) as the dragged icon passes over them,
+matching Windows 11's reorder feel.
+
+## 9. Rename "Force Quit Apps" → "Task Manager"
+
+Simple rename across UI (button label, panel title, any menu entries) in
+`TaskbarView.swift` / wherever the force-quit panel is defined. No functional
+change — current running-apps list UI is confirmed correct, keep as-is.
+
+## 10. Task Manager: add per-app CPU / RAM / Network columns
+
+Add three columns next to each app row in the existing list: CPU %, RAM
+usage, network usage. This needs a new lightweight polling service (e.g.
+`Core/ProcessMonitor.swift`) since none of the current files
+(`WindowManager`, `FocusManager`, `PermissionsManager`) track resource usage.
+
+Implementation notes:
+- CPU/RAM per-PID: available via `proc_pid_rusage` (need each app's PID —
+  should already be obtainable via `NSRunningApplication.processIdentifier`
+  from the existing window/app enumeration).
+- Network per-PID is harder — there's no clean public macOS API for
+  per-process network usage. Likely needs shelling out to `nettop -P -L 1`
+  (per-process network stats) and parsing output, or accept this column may
+  need to be a "best effort" / omitted if it proves unreliable. Flag this to
+  the person if `nettop` parsing turns out too fragile.
+- Poll interval should be independent of and likely slower than the existing
+  0.5s window poll (e.g. 1–2s) to avoid extra overhead — CPU/RAM/network
+  numbers don't need to update as fast as window state.
+
+## 11. Settings: icon size change doesn't re-layout properly
+
+In `Settings/TaskbarSettings.swift` / `UI/SettingsPanel.swift` — changing the
+icon size slider/value should immediately re-layout the taskbar (icon
+frame size, spacing, and the host panel's height in
+`TaskbarWindowController.swift` if height is tied to icon size). Currently
+something in that chain isn't propagating cleanly — check whether the size
+change is actually triggering a re-render of `TaskbarView.swift`'s icon row,
+or if it's a stale-frame/layout-not-invalidated issue.
+
+## 12. Settings: center alignment doesn't actually center
+
+Selecting "center" alignment in settings should position the icon row
+centered in the available taskbar width, same as Windows 11's centered
+taskbar. Currently it's not moving from its (likely left-aligned) position.
+Check the alignment logic in `TaskbarView.swift` — likely the icon row's
+container is still using leading-alignment constraints/stack alignment
+regardless of the setting, or the setting value isn't being read/applied at
+render time.
+
+## 13. Hover tooltip delay — reduce by half
+
+Per dev log §4, the not-running-app tooltip currently appears after ~0.8s
+(`IconTooltipPanel` in `UI/AppIconView.swift`). Change this delay to ~0.4s.
+
+## 14. Custom hotkey for opening Start menu
+
+Allow the user to set a custom keyboard shortcut to open/toggle the Start
+menu (default is presumably the Windows key equivalent / a fixed hotkey
+today). Needs:
+- A hotkey recorder control in Settings (`UI/SettingsPanel.swift`) — click a
+  field, press a key combo, it captures and displays it (similar pattern to
+  how macOS system shortcut recorders work).
+- Persist the chosen combo in `Settings/TaskbarSettings.swift`.
+- Wire it into whatever currently registers the fixed hotkey — per the dev
+  log, `UI/TaskbarWindowController.swift` handles "hotkeys" already, likely
+  via the Carbon API (`RegisterEventHotKey`) mentioned elsewhere in the
+  project. The existing registration should be re-done whenever the user
+  changes the setting (unregister old combo, register new one), and should
+  fall back to a sensible default if the user hasn't set one.
+
+## 15. Start menu: typing should auto-search
+
+When the Start menu is open and the user starts typing (no need to click into
+a search field first), it should automatically filter/search the app list
+live, matching Windows 11 behavior. Implementation notes:
+- Likely needs a local `NSEvent` key-down monitor scoped to while the Start
+  menu panel is key/visible, forwarding typed characters into the existing
+  search/filter text state — similar in spirit to the local event monitor
+  approach already used for drag-to-reorder in `UI/TaskbarView.swift`.
+- First keystroke should both focus the search field (if one exists visually)
+  and start filtering — no dead click required.
+- Should not interfere with existing Start menu keyboard nav (arrow keys,
+  Enter to launch, Escape to close) if that already exists.
+
+---
+
+# Batch 3 — Work area, pinning split, hotkey recorder, icon sizing, background apps
+
+## 16. Taskbar doesn't reserve screen space / doesn't stay on top
+
+Reported: when an app is maximized/fit to the full screen, the app extends
+past the taskbar instead of stopping above it, and the taskbar doesn't stay
+visually on top of it either. Two related problems:
+
+- **Work area reservation isn't effective.** Per the architecture map,
+  `TaskbarWindowController.swift` is meant to handle "work-area reservation"
+  already — this needs debugging, since maximized apps are currently sizing
+  themselves into the taskbar's space rather than stopping above it. Check
+  whether the reserved-area API call (however it's currently implemented) is
+  actually being applied/refreshed at the right time (e.g. on taskbar
+  show/hide, on display change, on launch).
+- **Taskbar panel isn't staying above other windows.** The taskbar's
+  `NSPanel` window level should be high enough that even a maximized/fullscreen
+  app never visually covers it. Verify the window level setting (e.g.
+  `.statusBar` / `.floating` equivalent) and that it isn't being reset or
+  dropped in some code path.
+
+## 17. "Pin to Start" and "Pin to Taskbar" need to be separate
+
+Currently pinning an app appears to affect both the Start menu and the
+taskbar as one combined action. Right-click context menu on an app icon
+should offer two independent options:
+- **Pin to Start**
+- **Pin to Taskbar**
+
+An app should be pinnable to either, both, or neither, independently —
+matching Windows 11. This likely means the underlying pinned-apps storage in
+`Settings/TaskbarSettings.swift` needs to become two separate lists (or one
+list with two boolean flags) instead of a single pinned-apps list currently
+shared by both surfaces.
+
+## 18. Hotkey recorder doesn't accept Option or Function keys
+
+Follow-up to item #14 (custom Start menu hotkey). The recorder control
+currently can't capture Option (⌥) as a modifier or Fn as the hotkey itself.
+Check the key-capture logic — likely it's filtering/ignoring `NSEvent`
+modifier flags for Option, and/or not listening for the Fn key event type at
+all (Fn is reported differently than other modifiers on macOS — via
+`NSEvent.ModifierFlags.function` — and may need explicit handling separate
+from the standard Cmd/Ctrl/Opt/Shift modifier flags).
+
+## 19. Icon size options look broken except "S"
+
+Follow-up to item #11. Only the smallest icon size preset renders correctly;
+other size presets (M, L, etc.) look visually wrong — likely padding,
+corner-radius, or hover-highlight dimensions are hardcoded to the "S" values
+elsewhere and not scaling proportionally with the rest of the icon. Check
+`UI/AppIconView.swift` for any hardcoded frame/padding constants that should
+instead be derived from the current icon-size setting.
+
+## 20. Center alignment: Start button should move to center too
+
+Follow-up to item #12. When center alignment is selected, the Start (grid)
+icon is currently staying pinned to the far left instead of moving along with
+the rest of the icon row as part of the centered group. The Start icon
+should be treated as the first item *within* the centered icon row, not as a
+fixed anchor separate from it.
+
+## 21. Apps running in the background (window closed, process alive) don't reopen from taskbar
+
+Reported case: Spotify's red close button puts it into a backgrounded state
+(process still running, no window — common for menu-bar-style apps), and
+clicking its taskbar icon afterward does nothing. Only apps that were fully
+quit reopen correctly when clicked.
+
+Root cause is likely in whatever click-handling logic decides how to respond
+to an icon tap: if it's only prepared for "app not running → launch" and
+"app running with a window → raise that window," it has no path for "app
+running with zero windows → bring the app to the front / ask it to open a new
+window." Fix: when the target app is running but has no windows, the click
+handler should call `NSRunningApplication.activate(...)` on it (rather than
+trying to find/raise a window that doesn't exist) so the app itself decides
+what to show (e.g. Spotify would reopen its main window via its own logic).
+
+
+
