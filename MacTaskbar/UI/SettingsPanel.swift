@@ -5,7 +5,7 @@ class SettingsPanelController: NSWindowController {
     static let shared = SettingsPanelController()
     private init() {
         let panel = NSPanel(
-            contentRect: CGRect(x: 0, y: 0, width: 380, height: 480),
+            contentRect: CGRect(x: 0, y: 0, width: 380, height: 635),
             styleMask: [.titled, .closable, .nonactivatingPanel],
             backing: .buffered, defer: false
         )
@@ -69,6 +69,17 @@ struct SettingsView: View {
                 .pickerStyle(.segmented).labelsHidden()
             }
 
+            // Start menu style
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Start Menu Style").font(.system(size: 13, weight: .medium))
+                Picker("", selection: $settings.startStyleRaw) {
+                    ForEach(TaskbarSettings.StartStyle.allCases, id: \.rawValue) { s in
+                        Text(s.rawValue).tag(s.rawValue)
+                    }
+                }
+                .pickerStyle(.segmented).labelsHidden()
+            }
+
             // Accent bar color
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
@@ -88,6 +99,12 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 10) {
                 Toggle("Auto-hide taskbar", isOn: $settings.autoHide)
                     .font(.system(size: 13))
+                Toggle("Show clock", isOn: $settings.showClock)
+                    .font(.system(size: 13))
+                Toggle("Green button maximizes above the taskbar", isOn: $settings.greenButtonMaximizes)
+                    .font(.system(size: 13))
+                Text("Off: the green button enters macOS full screen, where the taskbar hides.")
+                    .font(.system(size: 11)).foregroundColor(.secondary)
             }
 
             // Start menu hotkey
@@ -111,7 +128,7 @@ struct SettingsView: View {
             Spacer()
         }
         .padding(24)
-        .frame(width: 380, height: 480)
+        .frame(width: 380, height: 635)
     }
 }
 

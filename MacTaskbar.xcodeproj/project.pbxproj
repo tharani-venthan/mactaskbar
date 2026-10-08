@@ -22,11 +22,13 @@
 		A013 /* StartMenuPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F013 /* StartMenuPanel.swift */; };
 		A014 /* StartMenuView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F014 /* StartMenuView.swift */; };
 		A015 /* AllAppsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F015 /* AllAppsView.swift */; };
+		A022 /* Win10StartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F022 /* Win10StartView.swift */; };
 		A016 /* SystemTrayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F016 /* SystemTrayView.swift */; };
 		A017 /* SettingsPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F017 /* SettingsPanel.swift */; };
 		A018 /* WindowsLogo.swift in Sources */ = {isa = PBXBuildFile; fileRef = F018 /* WindowsLogo.swift */; };
 		A019 /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = F019 /* AppIcon.icns */; };
 		A020 /* ProcessMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = F020 /* ProcessMonitor.swift */; };
+		A021 /* WorkAreaEnforcer.swift in Sources */ = {isa = PBXBuildFile; fileRef = F021 /* WorkAreaEnforcer.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -45,11 +47,13 @@
 		F013 /* StartMenuPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StartMenuPanel.swift; sourceTree = "<group>"; };
 		F014 /* StartMenuView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StartMenuView.swift; sourceTree = "<group>"; };
 		F015 /* AllAppsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AllAppsView.swift; sourceTree = "<group>"; };
+		F022 /* Win10StartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Win10StartView.swift; sourceTree = "<group>"; };
 		F016 /* SystemTrayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemTrayView.swift; sourceTree = "<group>"; };
 		F017 /* SettingsPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsPanel.swift; sourceTree = "<group>"; };
 		F018 /* WindowsLogo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowsLogo.swift; sourceTree = "<group>"; };
 		F019 /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = AppIcon.icns; sourceTree = "<group>"; };
 		F020 /* ProcessMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessMonitor.swift; sourceTree = "<group>"; };
+		F021 /* WorkAreaEnforcer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkAreaEnforcer.swift; sourceTree = "<group>"; };
 		FENTITLE /* MacTaskbar.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MacTaskbar.entitlements; sourceTree = "<group>"; };
 		FPLIST /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		FPRODUCT /* MacTaskbar.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MacTaskbar.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -75,6 +79,7 @@
 				F005 /* AppLaunchTracker.swift */,
 				F006 /* PermissionsManager.swift */,
 				F020 /* ProcessMonitor.swift */,
+				F021 /* WorkAreaEnforcer.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -137,6 +142,7 @@
 				F013 /* StartMenuPanel.swift */,
 				F014 /* StartMenuView.swift */,
 				F015 /* AllAppsView.swift */,
+				F022 /* Win10StartView.swift */,
 				F016 /* SystemTrayView.swift */,
 				F017 /* SettingsPanel.swift */,
 			);
@@ -219,6 +225,7 @@
 				A005 /* AppLaunchTracker.swift in Sources */,
 				A006 /* PermissionsManager.swift in Sources */,
 				A020 /* ProcessMonitor.swift in Sources */,
+				A021 /* WorkAreaEnforcer.swift in Sources */,
 				A007 /* TaskbarSettings.swift in Sources */,
 				A008 /* TaskbarWindowController.swift in Sources */,
 				A009 /* TaskbarView.swift in Sources */,
@@ -228,6 +235,7 @@
 				A013 /* StartMenuPanel.swift in Sources */,
 				A014 /* StartMenuView.swift in Sources */,
 				A015 /* AllAppsView.swift in Sources */,
+				A022 /* Win10StartView.swift in Sources */,
 				A016 /* SystemTrayView.swift in Sources */,
 				A017 /* SettingsPanel.swift in Sources */,
 				A018 /* WindowsLogo.swift in Sources */,

@@ -34,6 +34,10 @@ class TaskbarSettings: ObservableObject {
         case dark = "Dark"; case light = "Light"; case system = "System"
     }
 
+    enum StartStyle: String, CaseIterable {
+        case windows11 = "Windows 11"; case windows10 = "Windows 10"
+    }
+
     enum AccentBarStyle: String, CaseIterable {
         case system = "System"; case windowsBlue = "Windows Blue"
     }
@@ -41,6 +45,11 @@ class TaskbarSettings: ObservableObject {
     @AppStorage("iconSize")       var iconSizeRaw: String       = IconSize.medium.rawValue
     @AppStorage("iconPosition")   var iconPositionRaw: String   = IconPosition.left.rawValue
     @AppStorage("autoHide")       var autoHide: Bool            = false
+    @AppStorage("startStyle")     var startStyleRaw: String     = StartStyle.windows10.rawValue
+    @AppStorage("showClock")      var showClock: Bool           = true
+    /// Green title-bar button fills the area above the taskbar (Windows-style
+    /// maximize) instead of entering a native full-screen Space.
+    @AppStorage("greenButtonMaximizes") var greenButtonMaximizes: Bool = true
     @AppStorage("appearanceMode") var appearanceModeRaw: String = AppearanceMode.dark.rawValue
     @AppStorage("accentBarStyle") var accentBarStyleRaw: String = AccentBarStyle.system.rawValue
     @AppStorage("pinnedApps")     private var pinnedAppsData: Data = Data()
@@ -59,6 +68,10 @@ class TaskbarSettings: ObservableObject {
         get { IconPosition(rawValue: iconPositionRaw) ?? .left }
         set { iconPositionRaw = newValue.rawValue }
     }
+    var startStyle: StartStyle {
+        get { StartStyle(rawValue: startStyleRaw) ?? .windows10 }
+        set { startStyleRaw = newValue.rawValue }
+    }
     var appearanceMode: AppearanceMode {
         get { AppearanceMode(rawValue: appearanceModeRaw) ?? .dark }
         set { appearanceModeRaw = newValue.rawValue }
@@ -73,12 +86,15 @@ class TaskbarSettings: ObservableObject {
         }
     }
     var taskbarMaterial: NSVisualEffectView.Material {
+        isLightMode ? .sheet : .hudWindow
+    }
+    var isLightMode: Bool {
         switch appearanceMode {
-        case .light: return .sheet
-        default: return .hudWindow
+        case .light:  return true
+        case .dark:   return false
+        case .system: return NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .aqua
         }
     }
-    var isLightMode: Bool { appearanceMode == .light }
 
     var accentBarStyle: AccentBarStyle {
         get { AccentBarStyle(rawValue: accentBarStyleRaw) ?? .system }

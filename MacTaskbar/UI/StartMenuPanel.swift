@@ -32,10 +32,23 @@ class StartMenuPanel: NSPanel {
 
     func show() {
         guard let screen = NSScreen.main else { return }
-        let width: CGFloat = 560; let height: CGFloat = 620
-        let taskbarH = TaskbarSettings.shared.iconSize.taskbarHeight
-        let x = screen.frame.minX + 8
-        let y = taskbarH + 8
+        // Windows 11 proportions; sits 12pt above the bar, centered with the
+        // icons in center mode and hugging the left edge otherwise.
+        let settings = TaskbarSettings.shared
+        let gap: CGFloat = 12
+        let taskbarH = settings.iconSize.taskbarHeight
+        let available = screen.visibleFrame.maxY - screen.frame.minY - taskbarH
+        var width: CGFloat = 600
+        var height = min(690, available - gap * 2)
+        var x = settings.iconPosition == .center ? screen.frame.midX - width / 2 : screen.frame.minX + gap
+        var y = screen.frame.minY + taskbarH + gap
+        if settings.startStyle == .windows10 {
+            // Windows 10's Start is a square sheet flush with the bar and the screen edge
+            width = Win10Start.width
+            height = min(640, available - gap)
+            x = settings.iconPosition == .center ? screen.frame.midX - width / 2 : screen.frame.minX
+            y = screen.frame.minY + taskbarH
+        }
         setFrame(CGRect(x: x, y: y, width: width, height: height), display: false)
 
         let view = StartMenuView(onDismiss: { [weak self] in self?.hide() })

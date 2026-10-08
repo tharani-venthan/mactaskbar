@@ -136,6 +136,27 @@ pointed at dead binaries.
   **"Open Anyway"** — then the onboarding panel walks them through
   permissions.
 
+### 10. Windows going underneath the taskbar + Windows 11 look
+**Symptom:** maximized/zoomed windows extended to the bottom of the screen,
+underneath the taskbar; in native full screen the bar covered the app.
+
+**Root cause:** macOS has no public way for a third-party bar to reserve
+screen space, and the private `CGSSetWorkArea` call is ignored on current
+macOS (windows measured 948 pt tall on a 982 pt screen with a 48 pt bar).
+
+**Fix (`Core/WorkAreaEnforcer.swift`):**
+- AX observers on every app; any standard window whose bottom edge lands in
+  the taskbar strip is resized up to the bar's top (debounced, never mid-drag).
+- Green title-bar button is intercepted (CGEventTap + AX hit-test) and turned
+  into a Windows-style maximize/restore toggle. ⌥-click and the setting
+  "Green button maximizes above the taskbar" keep the native behavior.
+- In a native full-screen Space the taskbar is ordered out and returns on exit
+  (`.fullScreenAuxiliary` removed).
+
+**Look:** Mica-style tint with a top hairline, square icon cells with an
+active-app plate and bottom-edge indicator pill, gradient Start logo in a
+matching cell, and a time-over-date clock at the trailing edge ("Show clock").
+
 ---
 
 ## Building
@@ -162,6 +183,7 @@ points at the Command Line Tools.)
 | Bar | `UI/TaskbarView.swift` | Taskbar layout, icon row + drag-reorder event monitor, force-quit panel |
 | Icon | `UI/AppIconView.swift` | Per-icon visuals, hover logic, tap, context menu, name tooltip |
 | Preview | `UI/HoverPreviewPanel.swift` | Grid of window thumbnails with per-window controls |
+| Work area | `Core/WorkAreaEnforcer.swift` | Keeps windows above the bar (AX), green-button maximize, full-screen detection |
 | Host window | `UI/TaskbarWindowController.swift` | Bottom-anchored non-activating panel, auto-hide, work-area reservation, hotkeys |
 | Settings | `Settings/TaskbarSettings.swift` + `UI/SettingsPanel.swift` | Icon size/position, appearance, auto-hide, pins |
 

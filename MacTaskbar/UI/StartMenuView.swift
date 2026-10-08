@@ -28,25 +28,38 @@ enum SearchResult: Identifiable {
 // MARK: - StartMenuView
 
 struct StartMenuView: View {
-    @ObservedObject private var settings = TaskbarSettings.shared
-    @ObservedObject private var launcher = AppLaunchTracker.shared
-    @State private var searchText        = ""
+    // Not private: the Windows 10 layout (Win10StartView.swift) is an
+    // extension of this view and shares its search and launch state.
+    @ObservedObject var settings = TaskbarSettings.shared
+    @ObservedObject var launcher = AppLaunchTracker.shared
+    @State var searchText        = ""
     @State private var showAllApps       = false
-    @State private var searchResults: [SearchResult] = []
-    @State private var isSearching       = false
-    @State private var selectedResultIdx = -1   // -1 = none selected
+    @State var searchResults: [SearchResult] = []
+    @State var isSearching       = false
+    @State var selectedResultIdx = -1   // -1 = none selected
+    @State var installedApps: [AllApp] = []
+    @State var railExpanded = false
 
     let onDismiss: () -> Void
 
+    var tint: Color { StartMenuStyle.tint(settings.isLightMode) }
+    private var isWin10: Bool { settings.startStyle == .windows10 }
+
     var body: some View {
         ZStack {
-            // Background — rounded, light/dark aware
-            RoundedRectangle(cornerRadius: 14)
-                .fill(Color(settings.isLightMode ? .white : .black).opacity(settings.isLightMode ? 0.6 : 0.75))
-            VisualEffectBlur(material: settings.taskbarMaterial, blendingMode: .behindWindow)
-                .cornerRadius(14)
+            // Windows 11 acrylic: blur underneath, near-opaque neutral tint on top
+            if isWin10 {
+                // Windows 10 acrylic is far more see-through than 11's Mica
+                AcrylicBlur(light: settings.isLightMode)
+                StartMenuStyle.acrylic(settings.isLightMode)
+            } else {
+                VisualEffectBlur(material: settings.taskbarMaterial, blendingMode: .behindWindow)
+                StartMenuStyle.surface(settings.isLightMode)
+            }
 
-            if showAllApps {
+            if isWin10 {
+                win10Content
+            } else if showAllApps {
                 AllAppsView(isShowing: $showAllApps)
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             } else if !searchText.isEmpty {
@@ -59,8 +72,11 @@ struct StartMenuView: View {
         }
         .animation(.easeInOut(duration: 0.18), value: showAllApps)
         .animation(.easeInOut(duration: 0.15), value: searchText.isEmpty)
-        .cornerRadius(14)
-        .shadow(color: .black.opacity(0.45), radius: 24, x: 0, y: 8)
+        // The panel's own window shadow follows this shape; a SwiftUI shadow
+        // here would just be clipped by the window bounds.
+        .clipShape(RoundedRectangle(cornerRadius: isWin10 ? 0 : StartMenuStyle.cornerRadius))
+        .overlay(RoundedRectangle(cornerRadius: isWin10 ? 0 : StartMenuStyle.cornerRadius)
+            .strokeBorder(tint.opacity(isWin10 ? 0.07 : 0.12), lineWidth: 1))
         .onChange(of: searchText) { query in
             selectedResultIdx = -1
             guard !query.isEmpty else { searchResults = []; return }
@@ -72,7 +88,7 @@ struct StartMenuView: View {
 
     var searchResultsView: some View {
         VStack(alignment: .leading, spacing: 0) {
-            searchBarWithHandlers.padding(.horizontal, 16).padding(.top, 16).padding(.bottom, 10)
+            searchBarWithHandlers.padding(.horizontal, StartMenuStyle.inset).padding(.top, 28).padding(.bottom, 12)
 
             if isSearching {
                 HStack { Spacer(); ProgressView(); Spacer() }.padding(20)
@@ -113,7 +129,7 @@ struct StartMenuView: View {
                             }
                         }
                     }
-                    .padding(.horizontal, 8)
+                    .padding(.horizontal, StartMenuStyle.inset - 12)
                     .padding(.bottom, 12)
                 }
             }
@@ -126,53 +142,37 @@ struct StartMenuView: View {
 
     var mainContent: some View {
         VStack(alignment: .leading, spacing: 0) {
-            searchBarWithHandlers.padding(.horizontal, 16).padding(.top, 16).padding(.bottom, 12)
+            searchBarWithHandlers
+                .padding(.horizontal, StartMenuStyle.inset).padding(.top, 28).padding(.bottom, 24)
 
             HStack {
-                Text("Pinned")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(settings.isLightMode ? .black : .white)
+                StartSectionTitle("Pinned")
                 Spacer()
-                Button(action: { showAllApps = true }) {
-                    HStack(spacing: 3) {
-                        Text("All apps").font(.system(size: 12))
-                        Image(systemName: "chevron.right").font(.system(size: 10))
-                    }
-                    .foregroundColor(settings.isLightMode ? .black.opacity(0.6) : .white.opacity(0.7))
-                    .padding(.horizontal, 10).padding(.vertical, 5)
-                    .background(RoundedRectangle(cornerRadius: 5)
-                        .fill(Color(settings.isLightMode ? .black : .white).opacity(0.08)))
-                }
-                .buttonStyle(.plain)
+                StartChipButton(title: "All apps", chevron: .trailing) { showAllApps = true }
             }
-            .padding(.horizontal, 20).padding(.bottom, 10)
+            .padding(.horizontal, StartMenuStyle.inset + 12).padding(.bottom, 14)
 
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 6), spacing: 6) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 6), spacing: 4) {
                 ForEach(settings.startPinnedBundleIDs, id: \.self) { bid in
                     PinnedAppCell(bundleID: bid, onLaunch: {
                         launchApp(bundleID: bid); onDismiss()
                     })
                 }
             }
-            .padding(.horizontal, 16)
-
-            Divider().background(Color(settings.isLightMode ? .black : .white).opacity(0.1))
-                .padding(.vertical, 10)
+            .padding(.horizontal, StartMenuStyle.inset)
 
             if !launcher.recentApps.isEmpty {
-                Text("Recent")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.secondary)
-                    .padding(.horizontal, 20).padding(.bottom, 6)
+                StartSectionTitle("Recommended")
+                    .padding(.horizontal, StartMenuStyle.inset + 12).padding(.top, 28).padding(.bottom, 12)
 
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 2) {
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible())], spacing: 4) {
                     ForEach(launcher.recentApps.prefix(6)) { r in
                         RecentAppRow(recent: r, onLaunch: {
                             launchApp(bundleID: r.bundleID); onDismiss()
                         })
                     }
                 }
-                .padding(.horizontal, 12)
+                .padding(.horizontal, StartMenuStyle.inset)
             }
 
             Spacer(minLength: 0)
@@ -181,12 +181,21 @@ struct StartMenuView: View {
     }
 
     var searchBarWithHandlers: some View {
+        searchBarFields
+            .padding(.horizontal, 14)
+            .frame(height: 36)
+            .background(Capsule().fill(tint.opacity(0.06)))
+            .overlay(Capsule().strokeBorder(tint.opacity(0.14), lineWidth: 1))
+    }
+
+    /// The search field itself, without chrome — each Start style frames it.
+    var searchBarFields: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .foregroundColor(.secondary).font(.system(size: 14))
+                .foregroundColor(tint.opacity(0.75)).font(.system(size: 13))
             SearchField(
                 text: $searchText,
-                placeholder: "Search apps, files, settings...",
+                placeholder: isWin10 ? "Type here to search" : "Search for apps, settings, and documents",
                 onArrowDown: {
                     let max = searchResults.count - 1
                     selectedResultIdx = min(selectedResultIdx + 1, max)
@@ -211,33 +220,34 @@ struct StartMenuView: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(11)
-        .background(RoundedRectangle(cornerRadius: 9)
-            .fill(Color(settings.isLightMode ? .black : .white).opacity(0.1)))
     }
 
     var bottomBar: some View {
         HStack {
-            HStack(spacing: 8) {
-                Image(systemName: "person.circle.fill")
-                    .font(.system(size: 20))
-                    .foregroundColor(settings.isLightMode ? .black.opacity(0.7) : .white.opacity(0.75))
+            HStack(spacing: 12) {
+                Image(systemName: "person.crop.circle.fill")
+                    .font(.system(size: 28))
+                    .foregroundColor(tint.opacity(0.8))
                 Text(NSFullUserName())
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(settings.isLightMode ? .black : .white)
+                    .font(.system(size: 12))
+                    .foregroundColor(tint)
             }
+            .padding(.horizontal, 10).frame(height: 40)
+            .startHover(radius: 4)
             Spacer()
             Button(action: { onDismiss() }) {
                 Image(systemName: "power")
                     .font(.system(size: 15))
-                    .foregroundColor(settings.isLightMode ? .black.opacity(0.7) : .white.opacity(0.75))
-                    .padding(8)
-                    .background(Circle().fill(Color(settings.isLightMode ? .black : .white).opacity(0.08)))
+                    .foregroundColor(tint.opacity(0.9))
+                    .frame(width: 40, height: 40)
+                    .startHover(radius: 4)
             }
             .buttonStyle(.plain)
         }
-        .padding(.horizontal, 20).padding(.vertical, 12)
-        .background(Color(settings.isLightMode ? .black : .white).opacity(0.06))
+        .padding(.horizontal, StartMenuStyle.inset + 2)
+        .frame(height: 64)
+        .background(Color.black.opacity(settings.isLightMode ? 0.04 : 0.22))
+        .overlay(Rectangle().fill(tint.opacity(0.08)).frame(height: 1), alignment: .top)
     }
 
     // MARK: - Search logic (Spotlight-style using NSMetadataQuery)
@@ -311,7 +321,7 @@ struct StartMenuView: View {
         return found
     }
 
-    private func open(result: SearchResult) {
+    func open(result: SearchResult) {
         switch result {
         case .app(_, let url, _):
             NSWorkspace.shared.openApplication(at: url, configuration: .init())
@@ -321,7 +331,7 @@ struct StartMenuView: View {
         onDismiss()
     }
 
-    private func launchApp(bundleID: String) {
+    func launchApp(bundleID: String) {
         if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
             NSWorkspace.shared.openApplication(at: url, configuration: .init())
         }
@@ -484,17 +494,19 @@ struct PinnedAppCell: View {
             .deletingPathExtension().lastPathComponent ?? bundleID
     }
     var body: some View {
-        VStack(spacing: 4) {
-            if let icon { Image(nsImage: icon).resizable().frame(width: 40, height: 40) }
+        VStack(spacing: 8) {
+            if let icon { Image(nsImage: icon).resizable().interpolation(.high).frame(width: 36, height: 36) }
             else { RoundedRectangle(cornerRadius: 8).fill(Color.secondary.opacity(0.2))
-                .frame(width: 40, height: 40) }
-            Text(name).font(.system(size: 10))
-                .foregroundColor(settings.isLightMode ? .black.opacity(0.85) : .white.opacity(0.85))
-                .lineLimit(2).multilineTextAlignment(.center).frame(maxWidth: 68)
+                .frame(width: 36, height: 36) }
+            Text(name).font(.system(size: 12))
+                .foregroundColor(StartMenuStyle.tint(settings.isLightMode))
+                .lineLimit(1).truncationMode(.tail)
+                .frame(maxWidth: .infinity)
         }
-        .padding(6)
-        .background(RoundedRectangle(cornerRadius: 8)
-            .fill(isHovered ? Color(settings.isLightMode ? .black : .white).opacity(0.1) : Color.clear))
+        .padding(.horizontal, 4)
+        .frame(maxWidth: .infinity).frame(height: 84)
+        .background(RoundedRectangle(cornerRadius: 4)
+            .fill(StartMenuStyle.tint(settings.isLightMode).opacity(isHovered ? 0.08 : 0)))
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }.onTapGesture { onLaunch() }
         .contextMenu {
@@ -532,18 +544,94 @@ struct RecentAppRow: View {
         return "\(Int(d/86400))d ago"
     }
     var body: some View {
-        HStack(spacing: 8) {
-            if let i = icon { Image(nsImage: i).resizable().frame(width: 26, height: 26) }
-            VStack(alignment: .leading, spacing: 1) {
+        HStack(spacing: 12) {
+            if let i = icon { Image(nsImage: i).resizable().interpolation(.high).frame(width: 32, height: 32) }
+            VStack(alignment: .leading, spacing: 2) {
                 Text(recent.name).font(.system(size: 12, weight: .medium))
-                    .foregroundColor(settings.isLightMode ? .black : .white).lineLimit(1)
-                Text(timeAgo).font(.system(size: 10)).foregroundColor(.secondary)
+                    .foregroundColor(StartMenuStyle.tint(settings.isLightMode)).lineLimit(1)
+                Text(timeAgo).font(.system(size: 11))
+                    .foregroundColor(StartMenuStyle.tint(settings.isLightMode).opacity(0.6))
             }
             Spacer()
         }
-        .padding(.horizontal, 10).padding(.vertical, 6)
-        .background(isHovered ? Color(settings.isLightMode ? .black : .white).opacity(0.08) : Color.clear)
-        .cornerRadius(6).contentShape(Rectangle())
-        .onHover { isHovered = $0 }.onTapGesture { onLaunch() }
+        .padding(.horizontal, 12).frame(height: 56)
+        .startHover(radius: 4)
+        .contentShape(Rectangle())
+        .onTapGesture { onLaunch() }
     }
+}
+
+// MARK: - Shared Start menu styling
+
+enum StartMenuStyle {
+    static let cornerRadius: CGFloat = 8
+    /// Horizontal inset of the content column (Windows 11 uses a wide margin).
+    static let inset: CGFloat = 28
+
+    static func tint(_ light: Bool) -> Color { light ? .black : .white }
+    static func acrylic(_ light: Bool) -> Color {
+        light ? Color(red: 0.93, green: 0.93, blue: 0.93).opacity(0.62)
+              : Color(red: 0.10, green: 0.10, blue: 0.10).opacity(0.58)
+    }
+    static func surface(_ light: Bool) -> Color {
+        light ? Color(red: 0.95, green: 0.95, blue: 0.95).opacity(0.86)
+              : Color(red: 0.13, green: 0.13, blue: 0.13).opacity(0.84)
+    }
+}
+
+struct StartSectionTitle: View {
+    let title: String
+    @ObservedObject private var settings = TaskbarSettings.shared
+    init(_ title: String) { self.title = title }
+    var body: some View {
+        Text(title)
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundColor(StartMenuStyle.tint(settings.isLightMode))
+    }
+}
+
+/// The small bordered "All apps ›" / "‹ Back" button.
+struct StartChipButton: View {
+    enum Chevron { case leading, trailing }
+    let title: String
+    let chevron: Chevron
+    let action: () -> Void
+    @ObservedObject private var settings = TaskbarSettings.shared
+    @State private var isHovered = false
+
+    var body: some View {
+        let tint = StartMenuStyle.tint(settings.isLightMode)
+        Button(action: action) {
+            HStack(spacing: 6) {
+                if chevron == .leading { Image(systemName: "chevron.left").font(.system(size: 8, weight: .semibold)) }
+                Text(title).font(.system(size: 12))
+                if chevron == .trailing { Image(systemName: "chevron.right").font(.system(size: 8, weight: .semibold)) }
+            }
+            .foregroundColor(tint)
+            .padding(.horizontal, 10).frame(height: 26)
+            .background(RoundedRectangle(cornerRadius: 4).fill(tint.opacity(isHovered ? 0.11 : 0.06)))
+            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(tint.opacity(0.09), lineWidth: 1))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+    }
+}
+
+private struct StartHover: ViewModifier {
+    let radius: CGFloat
+    @ObservedObject private var settings = TaskbarSettings.shared
+    @State private var isHovered = false
+    init(radius: CGFloat) { self.radius = radius }
+    func body(content: Content) -> some View {
+        content
+            .background(RoundedRectangle(cornerRadius: radius)
+                .fill(StartMenuStyle.tint(settings.isLightMode).opacity(isHovered ? 0.08 : 0)))
+            .onHover { isHovered = $0 }
+    }
+}
+
+extension View {
+    /// Windows 11's subtle rounded hover plate.
+    func startHover(radius: CGFloat) -> some View { modifier(StartHover(radius: radius)) }
 }

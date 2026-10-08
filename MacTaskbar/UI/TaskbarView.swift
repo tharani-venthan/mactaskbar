@@ -9,28 +9,20 @@ struct TaskbarView: View {
         ZStack {
             TaskbarBackground()
 
-            Group {
-                switch settings.iconPosition {
-                case .center:
-                    // Start button is part of the centered group itself (like
-                    // Windows 11), not a fixed left anchor — so it moves as a
-                    // unit with the icon row instead of staying pinned left.
-                    HStack(spacing: 0) {
-                        Spacer(minLength: 0)
-                        HStack(spacing: 6) {
-                            StartButton()
-                            iconsRow
-                        }
-                        Spacer(minLength: 0)
-                        Color.clear.frame(width: 44)
-                    }
-                case .left:
-                    HStack(spacing: 0) {
-                        StartButton().padding(.leading, 6)
-                        iconsRow
-                        Spacer(minLength: 0)
-                    }
-                }
+            // Start button is part of the icon group itself (like Windows
+            // 11), so in center mode it moves as a unit with the icon row.
+            // The group centers on the whole bar, not on the space left of
+            // the tray — the tray is layered on top at the trailing edge.
+            HStack(spacing: 0) {
+                StartButton()
+                iconsRow
+                if settings.iconPosition == .left { Spacer(minLength: 0) }
+            }
+            .padding(.leading, settings.iconPosition == .left ? 4 : 0)
+
+            HStack(spacing: 0) {
+                Spacer(minLength: 0)
+                SystemTrayView()
             }
         }
         .frame(maxWidth: .infinity)
@@ -57,10 +49,16 @@ struct TaskbarView: View {
 struct TaskbarBackground: View {
     @ObservedObject private var settings = TaskbarSettings.shared
     var body: some View {
-        ZStack {
+        // Windows 11 "Mica" bar: a near-opaque neutral tint over the blur,
+        // closed off by a hairline along the top edge.
+        let light = settings.isLightMode
+        ZStack(alignment: .top) {
             DynamicBlurBackground()
-            Color(settings.isLightMode ? .white : .black)
-                .opacity(settings.isLightMode ? 0.25 : 0.55)
+            (light ? Color(red: 0.95, green: 0.95, blue: 0.95) : Color(red: 0.11, green: 0.11, blue: 0.11))
+                .opacity(light ? 0.78 : 0.72)
+            Rectangle()
+                .fill((light ? Color.black : Color.white).opacity(light ? 0.10 : 0.09))
+                .frame(height: 1)
         }.ignoresSafeArea()
     }
 }
@@ -69,13 +67,14 @@ struct DynamicBlurBackground: NSViewRepresentable {
     @ObservedObject private var settings = TaskbarSettings.shared
     func makeNSView(context: Context) -> NSVisualEffectView {
         let v = NSVisualEffectView()
-        v.material = settings.taskbarMaterial
         v.blendingMode = .behindWindow
         v.state = .active
+        updateNSView(v, context: context)
         return v
     }
     func updateNSView(_ v: NSVisualEffectView, context: Context) {
         v.material = settings.taskbarMaterial
+        v.appearance = NSAppearance(named: settings.isLightMode ? .aqua : .darkAqua)
     }
 }
 
@@ -86,15 +85,18 @@ struct StartButton: View {
     @ObservedObject private var settings = TaskbarSettings.shared
 
     var body: some View {
-        // Scale off iconPt so Start stays proportionate to the app icons at
-        // every size — it was fixed at 18pt, which only looked right around
-        // the S/M presets and looked tiny next to XL icons.
-        let logoSize = settings.iconSize.iconPt * 0.45
+        // Same cell as the app icons (see AppIconView) so Start reads as the
+        // first button of the row; the logo scales off iconPt to stay
+        // proportionate at every size.
+        let size = settings.iconSize
+        let tint: Color = settings.isLightMode ? .black : .white
         Button(action: { StartMenuPanel.shared.toggle() }) {
-            WindowsLogo(size: logoSize)
-                .padding(settings.iconSize.iconPt * 0.2)
-                .background(RoundedRectangle(cornerRadius: 6)
-                    .fill(isHovered ? Color.white.opacity(0.15) : Color.clear))
+            WindowsLogo(size: size.iconPt * 0.62)
+                .frame(width: size.iconPt + 12, height: size.taskbarHeight - 8)
+                .background(RoundedRectangle(cornerRadius: 5)
+                    .fill(tint.opacity(isHovered ? 0.09 : 0)))
+                .frame(width: size.iconPt + 16, height: size.taskbarHeight)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { isHovered = $0 }
@@ -132,7 +134,7 @@ struct DraggableIconsRow: NSViewRepresentable {
 final class IconRowNSView: NSView {
     private var views: [String: NSHostingView<AppIconView>] = [:]  // bundleID → view
     private var items: [WindowManager.TaskbarItem] = []
-    private let spacing: CGFloat = 2
+    private let spacing: CGFloat = 0   // cells carry their own 2pt side margins
     private var monitor: Any?
     private var lastIconW: CGFloat = 0
 

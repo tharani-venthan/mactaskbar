@@ -6,12 +6,27 @@ struct AllApp: Identifiable {
     let name: String
     let url: URL
     var icon: NSImage { NSWorkspace.shared.icon(forFile: url.path) }
+
+    /// Every .app in the standard application folders, sorted by name.
+    static func loadInstalled() -> [AllApp] {
+        var found: [AllApp] = []
+        for dir in ["/Applications", "/System/Applications", "/System/Applications/Utilities"] {
+            guard let items = try? FileManager.default.contentsOfDirectory(
+                at: URL(fileURLWithPath: dir), includingPropertiesForKeys: nil
+            ) else { continue }
+            for item in items where item.pathExtension == "app" {
+                found.append(AllApp(id: item.path, name: item.deletingPathExtension().lastPathComponent, url: item))
+            }
+        }
+        return found.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
 }
 
 struct AllAppsView: View {
     @Binding var isShowing: Bool
     @State private var apps: [AllApp] = []
     @State private var searchText = ""
+    @ObservedObject private var settings = TaskbarSettings.shared
 
     var filteredApps: [AllApp] {
         if searchText.isEmpty { return apps }
@@ -25,72 +40,53 @@ struct AllAppsView: View {
     }
 
     var sortedKeys: [String] {
-        grouped.keys.sorted()
+        grouped.keys.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
     var body: some View {
+        let tint = StartMenuStyle.tint(settings.isLightMode)
         VStack(spacing: 0) {
-            // Header
-            HStack {
-                Button(action: { withAnimation(.easeInOut(duration: 0.2)) { isShowing = false } }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 13, weight: .semibold))
-                        Text("Back")
-                            .font(.system(size: 13, weight: .medium))
-                    }
-                    .foregroundColor(.white)
-                }
-                .buttonStyle(.plain)
-                .padding(8)
-                .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.1)))
-
-                Spacer()
-
-                Text("All Apps")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white)
-
-                Spacer()
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-
-            // Search
-            HStack {
+            // Search — same capsule as the main Start page
+            HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
-                    .foregroundColor(.white.opacity(0.5))
-                TextField("Search apps...", text: $searchText)
+                    .foregroundColor(tint.opacity(0.75)).font(.system(size: 13))
+                TextField("Search apps", text: $searchText)
                     .textFieldStyle(.plain)
-                    .foregroundColor(.white)
+                    .foregroundColor(tint)
                     .font(.system(size: 13))
             }
-            .padding(10)
-            .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.1)))
-            .padding(.horizontal, 16)
-            .padding(.bottom, 8)
+            .padding(.horizontal, 14)
+            .frame(height: 36)
+            .background(Capsule().fill(tint.opacity(0.06)))
+            .overlay(Capsule().strokeBorder(tint.opacity(0.14), lineWidth: 1))
+            .padding(.horizontal, StartMenuStyle.inset).padding(.top, 28).padding(.bottom, 24)
 
-            Divider().background(Color.white.opacity(0.15))
+            // Header: title left, Back on the right (where "All apps" was)
+            HStack {
+                StartSectionTitle("All apps")
+                Spacer()
+                StartChipButton(title: "Back", chevron: .leading) {
+                    withAnimation(.easeInOut(duration: 0.2)) { isShowing = false }
+                }
+            }
+            .padding(.horizontal, StartMenuStyle.inset + 12).padding(.bottom, 10)
 
             // App list
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
+                LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(sortedKeys, id: \.self) { key in
-                        Section {
-                            ForEach(grouped[key] ?? []) { app in
-                                AppRowView(app: app)
-                            }
-                        } header: {
-                            Text(key)
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(.white.opacity(0.5))
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 6)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(Color.black.opacity(0.3))
+                        Text(key)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(tint)
+                            .frame(width: 28, height: 36)
+                            .padding(.leading, 12)
+                        ForEach(grouped[key] ?? []) { app in
+                            AppRowView(app: app)
                         }
                     }
                 }
+                .padding(.horizontal, StartMenuStyle.inset)
+                .padding(.bottom, 12)
             }
         }
         .onAppear { loadApps() }
@@ -98,22 +94,7 @@ struct AllAppsView: View {
 
     private func loadApps() {
         DispatchQueue.global(qos: .userInitiated).async {
-            var found: [AllApp] = []
-            let dirs = ["/Applications", "/System/Applications", "/System/Applications/Utilities"]
-
-            for dir in dirs {
-                let url = URL(fileURLWithPath: dir)
-                guard let items = try? FileManager.default.contentsOfDirectory(
-                    at: url, includingPropertiesForKeys: nil
-                ) else { continue }
-
-                for item in items where item.pathExtension == "app" {
-                    let name = item.deletingPathExtension().lastPathComponent
-                    found.append(AllApp(id: item.path, name: name, url: item))
-                }
-            }
-
-            let sorted = found.sorted { $0.name < $1.name }
+            let sorted = AllApp.loadInstalled()
             DispatchQueue.main.async { self.apps = sorted }
         }
     }
@@ -121,25 +102,23 @@ struct AllAppsView: View {
 
 struct AppRowView: View {
     let app: AllApp
-    @State private var isHovered = false
+    @ObservedObject private var settings = TaskbarSettings.shared
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 14) {
             Image(nsImage: app.icon)
-                .resizable()
-                .frame(width: 32, height: 32)
+                .resizable().interpolation(.high)
+                .frame(width: 28, height: 28)
             Text(app.name)
                 .font(.system(size: 13))
-                .foregroundColor(.white)
+                .foregroundColor(StartMenuStyle.tint(settings.isLightMode))
+                .lineLimit(1)
             Spacer()
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 8)
-        .background(isHovered ? Color.white.opacity(0.1) : Color.clear)
-        .cornerRadius(6)
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 12)
+        .frame(height: 40)
+        .startHover(radius: 4)
         .contentShape(Rectangle())
-        .onHover { isHovered = $0 }
         .onTapGesture {
             NSWorkspace.shared.openApplication(at: app.url, configuration: NSWorkspace.OpenConfiguration())
         }

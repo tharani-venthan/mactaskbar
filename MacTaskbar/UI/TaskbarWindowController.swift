@@ -6,6 +6,8 @@ class TaskbarWindowController: NSWindowController {
     private let settings = TaskbarSettings.shared
     private var settingsObserver: Any?
     private var isHidden = false
+    private var hiddenForFullScreen = false
+    private var lastReservedHeight: CGFloat = 0
     private var edgeTrackingArea: NSTrackingArea?
     private var globalKeyMonitor: Any?
     private var localKeyMonitor: Any?
@@ -22,6 +24,7 @@ class TaskbarWindowController: NSWindowController {
         setupSettingsObserver()
         setupGlobalHotkey()
         setupWorkAreaMaintenance()
+        setupWorkAreaEnforcer()
     }
 
     static func makePanel() -> NSPanel {
@@ -30,10 +33,11 @@ class TaskbarWindowController: NSWindowController {
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered, defer: false
         )
-        // Above everything, including a maximized/fullscreen app's own window —
-        // matches the real Dock's level so nothing ever draws over the taskbar.
+        // Matches the real Dock's level so no ordinary window draws over the
+        // taskbar. Deliberately not .fullScreenAuxiliary: in a native
+        // full-screen Space the taskbar steps aside (see setupWorkAreaEnforcer).
         panel.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.dockWindow)))
-        panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
+        panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = false
@@ -61,6 +65,31 @@ class TaskbarWindowController: NSWindowController {
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main
         ) { [weak self] _ in self?.reserveScreenSpace() }
+    }
+
+    /// The part that actually keeps windows above the taskbar — see
+    /// WorkAreaEnforcer for why CGSSetWorkArea alone doesn't.
+    private func setupWorkAreaEnforcer() {
+        let enforcer = WorkAreaEnforcer.shared
+        enforcer.taskbarScreen = { [weak self] in self?.taskbarPanel?.screen ?? NSScreen.main }
+        enforcer.reservedFrame = { [weak self] in
+            guard let self, !self.isHidden, !self.hiddenForFullScreen, !self.settings.autoHide,
+                  let screen = self.taskbarPanel?.screen ?? NSScreen.main else { return nil }
+            let sf = screen.frame
+            return CGRect(x: sf.minX, y: sf.minY, width: sf.width, height: self.settings.iconSize.taskbarHeight)
+        }
+        enforcer.onFullScreenChange = { [weak self] fullScreen in
+            guard let self, let panel = self.taskbarPanel else { return }
+            self.hiddenForFullScreen = fullScreen
+            if fullScreen {
+                HoverPreviewPanel.shared.hide()
+                IconTooltipPanel.shared.hide()
+                panel.orderOut(nil)
+            } else {
+                panel.orderFrontRegardless()
+            }
+        }
+        enforcer.start()
     }
 
     private func setupContent() {
@@ -114,9 +143,14 @@ class TaskbarWindowController: NSWindowController {
         } else {
             panel.setFrame(target, display: true)
         }
-        panel.orderFrontRegardless()
+        if !hiddenForFullScreen { panel.orderFrontRegardless() }
         reserveScreenSpace()
         setupEdgeTracking()
+
+        // Windows that fit the old strip may now sit under a taller/re-shown bar.
+        let reserved = settings.autoHide ? 0 : height
+        if reserved > lastReservedHeight { WorkAreaEnforcer.shared.sweep() }
+        lastReservedHeight = reserved
     }
 
     // MARK: - Auto-hide edge tracking
@@ -212,7 +246,9 @@ class TaskbarWindowController: NSWindowController {
         }
     }
 
-    override func showWindow(_ sender: Any?) { taskbarPanel?.orderFrontRegardless() }
+    override func showWindow(_ sender: Any?) {
+        if !hiddenForFullScreen { taskbarPanel?.orderFrontRegardless() }
+    }
 
     deinit {
         if let m = globalKeyMonitor { NSEvent.removeMonitor(m) }

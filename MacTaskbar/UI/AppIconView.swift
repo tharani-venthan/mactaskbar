@@ -16,16 +16,17 @@ struct AppIconView: View {
     private var hovering: Bool { isHovered || forcedHover }
 
     var body: some View {
-        VStack(spacing: 2) {
+        // Windows 11 cell: a rounded square nearly the height of the bar.
+        // The focused app gets a faint filled, hairline-bordered plate; hover
+        // brightens it; the indicator pill sits on the cell's bottom edge.
+        let active = item.isActive && item.windowCount > 0
+        let plate: Double = active ? (hovering ? 0.13 : 0.08) : (hovering ? 0.07 : 0)
+        ZStack(alignment: .bottom) {
             ZStack {
-                // Hover-only highlight — Windows 11 never fills the background
-                // for the active state; focus is shown by the underline bar.
-                if hovering {
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(iconColor.opacity(0.10))
-                        .frame(width: settings.iconSize.iconPt + 10,
-                               height: settings.iconSize.iconPt + 8)
-                }
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(iconColor.opacity(plate))
+                RoundedRectangle(cornerRadius: 5)
+                    .strokeBorder(iconColor.opacity(active ? 0.07 : 0), lineWidth: 1)
                 Group {
                     if let icon = item.icon {
                         Image(nsImage: icon).resizable().interpolation(.high).antialiased(true)
@@ -35,9 +36,9 @@ struct AppIconView: View {
                     }
                 }
                 .frame(width: settings.iconSize.iconPt, height: settings.iconSize.iconPt)
-                .scaleEffect(hovering ? 1.08 : 1.0)
-                .animation(.spring(response: 0.2, dampingFraction: 0.7), value: hovering)
+                .offset(y: -1)
             }
+            .animation(.easeOut(duration: 0.1), value: plate)
 
             // Windows 11 underline indicator — one visual unit centered under
             // the icon. Focus is shown by bar width/opacity/color; multi-window
@@ -46,7 +47,7 @@ struct AppIconView: View {
             // at one icon size and looked broken (too big/tiny) at the others.
             let pt = settings.iconSize.iconPt
             let wideW = pt * 0.45, narrowW = pt * 0.14, segW = pt * 0.16
-            let barH = max(2, pt * 0.075)
+            let barH: CGFloat = 3
             HStack(spacing: 2) {
                 if item.windowCount > 0 {
                     if item.isActive {
@@ -70,11 +71,12 @@ struct AppIconView: View {
                     }
                 }
             }
-            .frame(height: max(4, barH + 1))
+            .frame(height: barH)
             .animation(.easeInOut(duration: 0.15), value: item.isActive)
         }
-        .frame(minWidth: settings.iconSize.iconPt + 14)
-        .padding(.vertical, 2)
+        .frame(width: settings.iconSize.iconPt + 12,
+               height: settings.iconSize.taskbarHeight - 8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
         .background(GeometryReader { geo in
             Color.clear
