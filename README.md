@@ -2,6 +2,12 @@
 
 A macOS taskbar app that mimics Windows 11 taskbar behavior exactly.
 
+## Download
+
+**[Download the latest DMG](https://github.com/tharani-venthan/mactaskbar/releases/latest)** (macOS 13+, Apple Silicon and Intel).
+
+Open the DMG and drag MacTaskbar into Applications. The app isn't notarised yet, so the first time right-click it → **Open** → **Open** (or System Settings → Privacy & Security → **Open Anyway**).
+
 ## How it Behaves (Exactly Like Windows 11)
 
 **Pinned apps:**
